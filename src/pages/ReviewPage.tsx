@@ -23,6 +23,8 @@ export default function ReviewPage() {
   const [mode, setMode] = useState<Mode>("kr-to-en");
   const [shuffled, setShuffled] = useState(false);
   const [relatedOpen, setRelatedOpen] = useState(false);
+  const [sessionStats, setSessionStats] = useState({ understood: 0, failed: 0 });
+  const [isComplete, setIsComplete] = useState(false);
 
   const dueCards = useMemo(() => {
     const due = savedChunks.filter(isDue);
@@ -58,6 +60,7 @@ export default function ReviewPage() {
   };
 
   const handleKnew = async () => {
+    const isLast = currentIndex === dueCards.length - 1;
     await advanceChunk(current.id);
     const newStage = (current.reviewStage ?? 0) + 1;
     if (newStage >= 4) {
@@ -66,18 +69,64 @@ export default function ReviewPage() {
       const labels = ["", "1일", "7일", "30일"];
       toast.success(`다음 복습: ${labels[newStage]} 후`);
     }
-    goNext();
+    const next = { ...sessionStats, understood: sessionStats.understood + 1 };
+    setSessionStats(next);
+    if (isLast) {
+      setIsComplete(true);
+    } else {
+      goNext();
+    }
   };
 
   const handleDidntKnow = async () => {
+    const isLast = currentIndex === dueCards.length - 1;
     await resetChunk(current.id);
-    if ((current.reviewStage ?? 0) === 0) {
-      toast("'처음부터'로 다시 도전해보세요");
+    const next = { ...sessionStats, failed: sessionStats.failed + 1 };
+    setSessionStats(next);
+    if (isLast) {
+      setIsComplete(true);
     } else {
-      toast("내일 다시 복습할게요");
+      if ((current.reviewStage ?? 0) === 0) {
+        toast("'처음부터'로 다시 도전해보세요");
+      } else {
+        toast("내일 다시 복습할게요");
+      }
+      goNext();
     }
-    goNext();
   };
+
+  const handleRestart = () => {
+    setIsComplete(false);
+    setCurrentIndex(0);
+    setIsFlipped(false);
+    setSessionStats({ understood: 0, failed: 0 });
+  };
+
+  // 세션 완료 화면
+  if (isComplete) {
+    const total = sessionStats.understood + sessionStats.failed;
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="text-center space-y-5">
+          <p className="font-serif text-2xl font-semibold text-foreground">복습 완료 ✓</p>
+          <div className="rounded-xl border bg-card px-8 py-5 space-y-2 text-sm">
+            <p className="text-muted-foreground">총 {total}개 학습</p>
+            <p className="text-green-600 font-medium">알았어요 {sessionStats.understood}개</p>
+            {sessionStats.failed > 0 && (
+              <p className="text-muted-foreground">내일 다시 {sessionStats.failed}개</p>
+            )}
+          </div>
+          <button
+            onClick={handleRestart}
+            className="flex items-center gap-1.5 mx-auto rounded-xl px-5 py-2 text-sm text-muted-foreground hover:bg-secondary transition-colors"
+          >
+            <RotateCcw className="h-4 w-4" />
+            처음부터 다시
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // 오늘 할 카드 없음
   if (savedChunks.length > 0 && dueCards.length === 0) {
@@ -269,7 +318,7 @@ export default function ReviewPage() {
       {/* 처음부터 */}
       <div className="mt-6 flex justify-center">
         <button
-          onClick={() => { setCurrentIndex(0); setIsFlipped(false); }}
+          onClick={handleRestart}
           className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm text-muted-foreground hover:bg-secondary"
         >
           <RotateCcw className="h-4 w-4" />
