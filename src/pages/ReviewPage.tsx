@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useChunkStore } from "@/store/chunkStore";
 import { motion, AnimatePresence } from "framer-motion";
 import { RotateCcw, Shuffle, X, Check, ChevronDown } from "lucide-react";
@@ -36,6 +36,13 @@ export default function ReviewPage() {
   }, [savedChunks, shuffled]);
 
   const current = dueCards[currentIndex];
+
+  // currentIndex가 dueCards 범위를 벗어나면 자동 보정
+  useEffect(() => {
+    if (dueCards.length > 0 && currentIndex >= dueCards.length) {
+      setCurrentIndex(dueCards.length - 1);
+    }
+  }, [dueCards.length, currentIndex]);
 
   const related = useMemo(
     () => (current ? findRelatedPhrases(current, savedChunks) : []),
@@ -103,6 +110,8 @@ export default function ReviewPage() {
       </div>
     );
   }
+
+  if (!current) return null;
 
   const frontContent = mode === "kr-to-en" ? current.meaning : current.phrase;
   const backContent = mode === "kr-to-en" ? current.phrase : current.meaning;
