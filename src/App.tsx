@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useEffect } from "react";
 import AppNav from "@/components/AppNav";
+import DashboardPage from "@/pages/DashboardPage";
 import ExtractPage from "@/pages/ExtractPage";
 import ReviewPage from "@/pages/ReviewPage";
 import LibraryPage from "@/pages/LibraryPage";
@@ -38,7 +39,8 @@ function AppContent() {
     <>
       <AppNav />
       <Routes>
-        <Route path="/" element={<ExtractPage />} />
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/extract" element={<ExtractPage />} />
         <Route path="/review" element={<ReviewPage />} />
         <Route path="/library" element={<LibraryPage />} />
         <Route path="*" element={<NotFound />} />
