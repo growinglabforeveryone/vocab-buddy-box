@@ -7,6 +7,7 @@ import ChunkCard from "@/components/ChunkCard";
 import { Plus, Sparkles, Save, Loader2, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 const SOURCE_PRESETS = [
   { label: "📧 이메일", value: "이메일" },
@@ -37,13 +38,30 @@ export default function ExtractPage() {
   const [showSource, setShowSource] = useState(false);
   const [customSource, setCustomSource] = useState("");
 
+  // YouTube tab state
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [youtubeTranscript, setYoutubeTranscript] = useState("");
+  const [loadingTranscript, setLoadingTranscript] = useState(false);
+  const [activeTab, setActiveTab] = useState("text");
+
   const handleExtract = useCallback(async () => {
-    if (!inputText.trim()) return;
+    const textToExtract = activeTab === "youtube" ? youtubeTranscript : inputText;
+    if (!textToExtract.trim()) return;
     setLoading(true);
-    setSourceText(inputText);
+    setSourceText(textToExtract);
     try {
-      const result = await extractChunks(inputText);
-      setChunks(result);
+      const result = await extractChunks(textToExtract);
+      // Attach source info for youtube
+      if (activeTab === "youtube") {
+        const enriched = result.map((c) => ({
+          ...c,
+          sourceUrl: youtubeUrl,
+          sourceType: "youtube" as const,
+        }));
+        setChunks(enriched);
+      } else {
+        setChunks(result);
+      }
       toast.success(`${result.length}개의 단어뭉치를 추출했습니다`);
     } catch (err) {
       console.error("Extract error:", err);
@@ -51,7 +69,30 @@ export default function ExtractPage() {
     } finally {
       setLoading(false);
     }
-  }, [inputText, setSourceText, setChunks]);
+  }, [activeTab, inputText, youtubeTranscript, youtubeUrl, setSourceText, setChunks]);
+
+  const handleFetchTranscript = async () => {
+    if (!youtubeUrl.trim()) return;
+    setLoadingTranscript(true);
+    try {
+      const res = await fetch("/api/youtube-transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: youtubeUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "영어 자막을 찾을 수 없습니다");
+        return;
+      }
+      setYoutubeTranscript(data.transcript);
+      toast.success("자막을 불러왔습니다");
+    } catch {
+      toast.error("자막을 불러오는 중 오류가 발생했습니다");
+    } finally {
+      setLoadingTranscript(false);
+    }
+  };
 
   const handleAddChunk = () => {
     addChunk({
@@ -68,6 +109,8 @@ export default function ExtractPage() {
     try {
       await commitChunks();
       setInputText("");
+      setYoutubeTranscript("");
+      setYoutubeUrl("");
       toast.success("저장 완료! 지금 바로 복습해보세요 ✓");
       navigate("/review");
     } catch {
@@ -90,13 +133,52 @@ export default function ExtractPage() {
             </p>
           </div>
 
-          <textarea
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            rows={12}
-            placeholder="영어 기사, 이메일, 또는 텍스트를 여기에 붙여넣으세요..."
-            className="w-full resize-none rounded-xl border bg-card p-6 font-serif text-lg leading-relaxed shadow-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="w-full">
+              <TabsTrigger value="text" className="flex-1">📝 텍스트</TabsTrigger>
+              <TabsTrigger value="youtube" className="flex-1">▶️ 유튜브</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="text" className="space-y-4">
+              <textarea
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                rows={12}
+                placeholder="영어 기사, 이메일, 또는 텍스트를 여기에 붙여넣으세요..."
+                className="w-full resize-none rounded-xl border bg-card p-6 font-serif text-lg leading-relaxed shadow-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </TabsContent>
+
+            <TabsContent value="youtube" className="space-y-4">
+              <div className="flex gap-2">
+                <input
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  placeholder="https://youtube.com/watch?v=..."
+                  className="flex-1 rounded-xl border bg-card px-4 py-3 text-sm shadow-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+                <button
+                  onClick={handleFetchTranscript}
+                  disabled={loadingTranscript || !youtubeUrl.trim()}
+                  className="flex shrink-0 items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-secondary disabled:opacity-50"
+                >
+                  {loadingTranscript ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  자막 불러오기
+                </button>
+              </div>
+              {youtubeTranscript && (
+                <textarea
+                  value={youtubeTranscript}
+                  onChange={(e) => setYoutubeTranscript(e.target.value)}
+                  rows={12}
+                  placeholder="자막이 여기에 표시됩니다..."
+                  className="w-full resize-none rounded-xl border bg-card p-6 font-serif text-lg leading-relaxed shadow-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              )}
+            </TabsContent>
+          </Tabs>
 
           {/* 출처 선택 (선택사항) */}
           <div className="space-y-3">
@@ -176,7 +258,7 @@ export default function ExtractPage() {
 
           <button
             onClick={handleExtract}
-            disabled={loading || !inputText.trim()}
+            disabled={loading || (activeTab === "text" ? !inputText.trim() : !youtubeTranscript.trim())}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >
             {loading ? (
@@ -200,6 +282,8 @@ export default function ExtractPage() {
                   setChunks([]);
                   setSourceText("");
                   setInputText("");
+                  setYoutubeTranscript("");
+                  setYoutubeUrl("");
                 }}
                 className="text-sm text-muted-foreground hover:text-foreground"
               >

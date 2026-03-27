@@ -1,5 +1,5 @@
 import { Chunk } from "@/types/chunk";
-import { Pencil, Trash2, Check, X } from "lucide-react";
+import { Pencil, Trash2, Check, X, ExternalLink } from "lucide-react";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 
@@ -118,6 +118,17 @@ export default function ChunkCard({
           <p className="font-serif text-sm leading-relaxed text-muted-foreground italic">
             "{chunk.exampleSentence}"
           </p>
+          {chunk.sourceUrl && (
+            <a
+              href={chunk.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+            >
+              <ExternalLink className="h-3 w-3" />
+              출처 보기
+            </a>
+          )}
         </div>
       )}
     </motion.div>
