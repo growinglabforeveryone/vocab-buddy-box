@@ -129,6 +129,7 @@ export default function ChunkCard({
               출처 보기
             </a>
           )}
+        </div>
       )}
     </motion.div>
   );
