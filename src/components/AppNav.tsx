@@ -1,9 +1,10 @@
-import { BookOpen, Layers, Library, LogOut } from "lucide-react";
+import { BookOpen, Home, Layers, Library, LogOut } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 
 const navItems = [
-  { to: "/", label: "추출", icon: Layers },
+  { to: "/", label: "홈", icon: Home },
+  { to: "/extract", label: "추출", icon: Layers },
   { to: "/review", label: "복습", icon: BookOpen },
   { to: "/library", label: "라이브러리", icon: Library },
 ];
