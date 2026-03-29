@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useChunkStore } from "@/store/chunkStore";
+import { Chunk } from "@/types/chunk";
 import { motion, AnimatePresence } from "framer-motion";
 import { RotateCcw, Shuffle, X, Check, ChevronDown, MinusCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -13,19 +14,24 @@ const NEXT_REVIEW_LABELS = ["", "1일 뒤", "7일 뒤", "30일 뒤"];
 function isDue(chunk: { reviewStage?: number; nextReviewAt?: string; mastered?: boolean; status?: string }) {
   if (chunk.mastered) return false;
   if (chunk.status === "excluded") return false;
-  if ((chunk.reviewStage ?? 0) === 0) return true; // 저장 직후
+  if ((chunk.reviewStage ?? 0) === 0) return true;
   if (!chunk.nextReviewAt) return true;
   return new Date(chunk.nextReviewAt) <= new Date();
 }
 
 export default function ReviewPage() {
   const { savedChunks, advanceChunk, resetChunk, excludeChunk } = useChunkStore();
-  const [currentIndex, setCurrentIndex] = useState(0);
+
+  // Session queue — managed independently from dueCards after initialization
+  const [sessionQueue, setSessionQueue] = useState<Chunk[]>([]);
+  const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
+  const [sessionInitialized, setSessionInitialized] = useState(false);
+  const [sessionTotal, setSessionTotal] = useState(0);
+
   const [isFlipped, setIsFlipped] = useState(false);
   const [mode, setMode] = useState<Mode>("kr-to-en");
   const [shuffled, setShuffled] = useState(false);
   const [relatedOpen, setRelatedOpen] = useState(false);
-  const [sessionStats, setSessionStats] = useState({ understood: 0, failed: 0 });
   const [isComplete, setIsComplete] = useState(false);
 
   const dueCards = useMemo(() => {
@@ -41,102 +47,114 @@ export default function ReviewPage() {
       }
       return true;
     });
-    if (shuffled) return [...due].sort(() => Math.random() - 0.5);
-    // 신규(stage 0) 먼저, 그 다음 due 날짜 오래된 순
+
     return due.sort((a, b) => {
       if ((a.reviewStage ?? 0) === 0 && (b.reviewStage ?? 0) !== 0) return -1;
       if ((a.reviewStage ?? 0) !== 0 && (b.reviewStage ?? 0) === 0) return 1;
       return new Date(a.nextReviewAt ?? 0).getTime() - new Date(b.nextReviewAt ?? 0).getTime();
     });
-  }, [savedChunks, shuffled]);
+  }, [savedChunks]);
 
-  const current = dueCards[currentIndex];
-
-  // currentIndex가 dueCards 범위를 벗어나면 자동 보정
+  // Initialize session once when dueCards become available
   useEffect(() => {
-    if (dueCards.length > 0 && currentIndex >= dueCards.length) {
-      setCurrentIndex(dueCards.length - 1);
+    if (!sessionInitialized && dueCards.length > 0) {
+      setSessionQueue([...dueCards]);
+      setSessionTotal(dueCards.length);
+      setSessionInitialized(true);
     }
-  }, [dueCards.length, currentIndex]);
+  }, [dueCards, sessionInitialized]);
+
+  const current = sessionQueue[0];
 
   const related = useMemo(
     () => (current ? findRelatedPhrases(current, savedChunks) : []),
     [current, savedChunks]
   );
 
-  const goNext = () => {
+  const advance = (newQueue: Chunk[]) => {
     setIsFlipped(false);
     setRelatedOpen(false);
     setTimeout(() => {
-      setCurrentIndex((i) => Math.min(i + 1, dueCards.length - 1));
+      setSessionQueue(newQueue);
+      if (newQueue.length === 0) setIsComplete(true);
     }, 150);
   };
 
   const handleKnew = async () => {
-    const isLast = currentIndex === dueCards.length - 1;
-    await advanceChunk(current.id);
-    const newStage = (current.reviewStage ?? 0) + 1;
-    if (newStage >= 4) {
-      toast.success("완료! 장기 기억으로 전환됐어요 🎉");
+    if (!current) return;
+    const card = current;
+    const wasFailed = failedIds.has(card.id);
+    const newQueue = sessionQueue.slice(1);
+
+    advance(newQueue);
+
+    if (wasFailed) {
+      await resetChunk(card.id);
+      if (newQueue.length > 0) toast("재시도 성공! 내일 다시 복습할게요 💪");
     } else {
-      toast.success(`다음 복습: ${NEXT_REVIEW_LABELS[newStage]}`);
-    }
-    const next = { ...sessionStats, understood: sessionStats.understood + 1 };
-    setSessionStats(next);
-    if (isLast) {
-      setIsComplete(true);
-    } else {
-      goNext();
+      await advanceChunk(card.id);
+      if (newQueue.length > 0) {
+        const newStage = (card.reviewStage ?? 0) + 1;
+        if (newStage >= 4) {
+          toast.success("완료! 장기 기억으로 전환됐어요 🎉");
+        } else {
+          toast.success(`다음 복습: ${NEXT_REVIEW_LABELS[newStage]}`);
+        }
+      }
     }
   };
 
   const handleDidntKnow = async () => {
-    const isLast = currentIndex === dueCards.length - 1;
-    await resetChunk(current.id);
-    const next = { ...sessionStats, failed: sessionStats.failed + 1 };
-    setSessionStats(next);
-    if (isLast) {
-      setIsComplete(true);
-    } else {
-      if ((current.reviewStage ?? 0) === 0) {
-        toast("'처음부터'로 다시 도전해보세요");
-      } else {
-        toast("내일 다시 복습할게요");
-      }
-      goNext();
-    }
+    if (!current) return;
+    const card = current;
+
+    setFailedIds((prev) => new Set([...prev, card.id]));
+    // Move to end of queue
+    advance([...sessionQueue.slice(1), card]);
+    toast("다시 한 번 해봐요 💪");
   };
 
   const handleExclude = async () => {
-    const isLast = currentIndex === dueCards.length - 1;
-    await excludeChunk(current.id);
+    if (!current) return;
+    const card = current;
+    const newQueue = sessionQueue.filter((c) => c.id !== card.id);
+
+    await excludeChunk(card.id);
     toast("라이브러리에서 복구할 수 있어요");
-    if (isLast) {
-      setIsComplete(true);
-    } else {
-      goNext();
-    }
+    advance(newQueue);
   };
 
   const handleRestart = () => {
     setIsComplete(false);
-    setCurrentIndex(0);
+    setSessionInitialized(false);
+    setSessionQueue([]);
+    setFailedIds(new Set());
     setIsFlipped(false);
-    setSessionStats({ understood: 0, failed: 0 });
+    setRelatedOpen(false);
   };
 
-  // 세션 완료 화면
+  const handleShuffle = () => {
+    const next = !shuffled;
+    setShuffled(next);
+    if (next) {
+      setSessionQueue((prev) => [...prev].sort(() => Math.random() - 0.5));
+    }
+  };
+
+  // ── Screens ──────────────────────────────────────────────
+
   if (isComplete) {
-    const total = sessionStats.understood + sessionStats.failed;
+    const retriedCount = failedIds.size;
+    const perfectCount = sessionTotal - retriedCount;
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="text-center space-y-5">
           <p className="font-serif text-2xl font-semibold text-foreground">복습 완료 ✓</p>
           <div className="rounded-xl border bg-card px-8 py-5 space-y-2 text-sm">
-            <p className="text-muted-foreground">총 {total}개 학습</p>
-            <p className="text-green-600 font-medium">알았어요 {sessionStats.understood}개</p>
-            {sessionStats.failed > 0 && (
-              <p className="text-muted-foreground">내일 다시 {sessionStats.failed}개</p>
+            <p className="text-muted-foreground">총 {sessionTotal}개 완료</p>
+            <p className="text-green-600 font-medium">처음부터 알았어요 {perfectCount}개</p>
+            {retriedCount > 0 && (
+              <p className="text-amber-600">재시도 후 성공 {retriedCount}개</p>
             )}
           </div>
           <button
@@ -151,8 +169,7 @@ export default function ReviewPage() {
     );
   }
 
-  // 오늘 할 카드 없음
-  if (savedChunks.length > 0 && dueCards.length === 0) {
+  if (savedChunks.length > 0 && dueCards.length === 0 && !sessionInitialized) {
     const nextDue = savedChunks
       .filter((c) => !c.mastered && c.status !== "excluded" && c.nextReviewAt)
       .sort((a, b) => new Date(a.nextReviewAt!).getTime() - new Date(b.nextReviewAt!).getTime())[0];
@@ -185,6 +202,7 @@ export default function ReviewPage() {
 
   if (!current) return null;
 
+  const isRetry = failedIds.has(current.id);
   const frontContent = mode === "kr-to-en" ? current.meaning : current.phrase;
   const backContent = mode === "kr-to-en" ? current.phrase : current.meaning;
 
@@ -213,12 +231,11 @@ export default function ReviewPage() {
 
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">
-            <span className="tabular-nums font-medium text-foreground">{currentIndex + 1}</span>
-            <span className="mx-1">/</span>
-            <span className="tabular-nums">{dueCards.length}</span>
+            <span className="tabular-nums font-medium text-foreground">{sessionQueue.length}</span>
+            <span className="ml-1">개 남음</span>
           </span>
           <button
-            onClick={() => { setShuffled((s) => !s); setCurrentIndex(0); setIsFlipped(false); }}
+            onClick={handleShuffle}
             className={`rounded-lg p-1.5 transition-colors ${shuffled ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground"}`}
           >
             <Shuffle className="h-4 w-4" />
@@ -226,7 +243,7 @@ export default function ReviewPage() {
         </div>
       </div>
 
-      {/* 단계 표시 */}
+      {/* 단계 + 재시도 표시 */}
       <div className="mb-4 flex items-center gap-2">
         {[0, 1, 2, 3].map((s) => (
           <div
@@ -239,6 +256,11 @@ export default function ReviewPage() {
         <span className="ml-1 text-xs text-muted-foreground">
           {STAGE_LABELS[current.reviewStage ?? 0]}
         </span>
+        {isRetry && (
+          <span className="rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-xs text-amber-700">
+            다시
+          </span>
+        )}
       </div>
 
       {/* 플래시카드 */}
@@ -290,7 +312,7 @@ export default function ReviewPage() {
               </button>
             </div>
 
-            {/* 제외 버튼 (작고 서브텍스트처럼) */}
+            {/* 제외 버튼 */}
             <button
               onClick={(e) => { e.stopPropagation(); handleExclude(); }}
               className="mt-3 flex items-center gap-1 text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
@@ -302,7 +324,7 @@ export default function ReviewPage() {
         </motion.div>
       </div>
 
-      {/* 비슷한 표현 (뒤집기 후에만 표시) */}
+      {/* 비슷한 표현 */}
       <AnimatePresence>
         {isFlipped && related.length > 0 && (
           <motion.div

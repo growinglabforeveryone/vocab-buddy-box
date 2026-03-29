@@ -29,10 +29,14 @@ export default function ExtractPage() {
     commitChunks,
     setSourceName,
     sourceName,
+    setMiniSessionCards,
+    scheduleTomorrow,
   } = useChunkStore();
 
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [pendingMiniCards, setPendingMiniCards] = useState<{ id: string; phrase: string }[]>([]);
+  const [schedulingTomorrow, setSchedulingTomorrow] = useState(false);
   const [hoveredChunkId, setHoveredChunkId] = useState<string | null>(null);
   const [inputText, setInputText] = useState("");
   const [showSource, setShowSource] = useState(false);
@@ -106,13 +110,13 @@ export default function ExtractPage() {
 
   const handleCommit = async () => {
     if (chunks.length === 0) return;
+    const toCommit = chunks.map((c) => ({ id: c.id, phrase: c.phrase }));
     try {
       await commitChunks();
       setInputText("");
       setYoutubeTranscript("");
       setYoutubeUrl("");
-      toast.success("저장 완료! 지금 바로 복습해보세요 ✓");
-      navigate("/review");
+      setPendingMiniCards(toCommit);
     } catch {
       toast.error("저장에 실패했습니다. 다시 시도해주세요.");
     }
@@ -356,6 +360,71 @@ export default function ExtractPage() {
           </div>
         </div>
       )}
+
+      {/* 미니 세션 모달 */}
+      <AnimatePresence>
+        {pendingMiniCards.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              className="w-full max-w-sm space-y-4 rounded-2xl border bg-card p-6 shadow-lg"
+            >
+              <div className="space-y-1 text-center">
+                <p className="text-lg font-semibold text-foreground">
+                  ✨ {pendingMiniCards.length}개 저장 완료!
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  지금 한 번 훑어보면 더 오래 기억돼요
+                </p>
+              </div>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => {
+                    setMiniSessionCards(
+                      pendingMiniCards.map((c) => ({
+                        ...c,
+                        meaning: "",
+                        exampleSentence: "",
+                        createdAt: new Date().toISOString(),
+                        reviewStage: 0,
+                        status: "active" as const,
+                      }))
+                    );
+                    setPendingMiniCards([]);
+                    navigate("/review");
+                  }}
+                  className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  지금 한 번 보기
+                </button>
+                <button
+                  disabled={schedulingTomorrow}
+                  onClick={async () => {
+                    setSchedulingTomorrow(true);
+                    try {
+                      await scheduleTomorrow(pendingMiniCards.map((c) => c.id));
+                      toast.success("내일 복습 큐에 추가됐어요");
+                    } finally {
+                      setSchedulingTomorrow(false);
+                      setPendingMiniCards([]);
+                    }
+                  }}
+                  className="w-full rounded-xl border px-4 py-3 text-sm text-muted-foreground transition-colors hover:bg-secondary disabled:opacity-50"
+                >
+                  {schedulingTomorrow ? "저장 중..." : "내일부터 복습"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

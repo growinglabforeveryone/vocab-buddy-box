@@ -91,29 +91,40 @@ export default function LibraryPage() {
             {filtered.map((chunk, i) => (
               <div key={chunk.id}>
                 {/* 메타 태그 */}
-                {(chunk.sourceName || chunk.mastered || activeTab === "excluded") && (
-                  <div className="mb-1.5 flex gap-2 px-1">
-                    {chunk.sourceName && (
-                      <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
-                        {chunk.sourceName}
+                {(() => {
+                  const stage = chunk.reviewStage ?? 0;
+                  const stageLabel = chunk.mastered
+                    ? { text: "완료 ✓", cls: "bg-green-50 border border-green-200 text-green-700" }
+                    : stage === 0
+                    ? { text: "신규", cls: "bg-blue-50 border border-blue-200 text-blue-700" }
+                    : stage === 1
+                    ? { text: "1일", cls: "bg-yellow-50 border border-yellow-200 text-yellow-700" }
+                    : stage === 2
+                    ? { text: "7일", cls: "bg-orange-50 border border-orange-200 text-orange-700" }
+                    : { text: "30일", cls: "bg-purple-50 border border-purple-200 text-purple-700" };
+
+                  return (
+                    <div className="mb-1.5 flex gap-2 px-1">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${stageLabel.cls}`}>
+                        {stageLabel.text}
                       </span>
-                    )}
-                    {chunk.mastered && (
-                      <span className="rounded-full bg-green-50 border border-green-200 px-2 py-0.5 text-xs text-green-700">
-                        마스터 완료 ✓
-                      </span>
-                    )}
-                    {activeTab === "excluded" && (
-                      <button
-                        onClick={() => restoreChunk(chunk.id)}
-                        className="flex items-center gap-1 rounded-full bg-secondary border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors"
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                        다시 복습하기
-                      </button>
-                    )}
-                  </div>
-                )}
+                      {chunk.sourceName && (
+                        <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
+                          {chunk.sourceName}
+                        </span>
+                      )}
+                      {activeTab === "excluded" && (
+                        <button
+                          onClick={() => restoreChunk(chunk.id)}
+                          className="flex items-center gap-1 rounded-full bg-secondary border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors"
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                          다시 복습하기
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
                 <ChunkCard
                   chunk={chunk}
                   index={i}

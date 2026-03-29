@@ -105,7 +105,7 @@ export default function DashboardPage() {
   const weekActivity = weekDays.map((label, i) => {
     const d = new Date(today);
     d.setDate(today.getDate() + mondayOffset + i);
-    const hasActivity = savedChunks.some((c) => isSameDay(new Date(c.createdAt), d));
+    const hasActivity = savedChunks.some((c) => c.lastReviewedAt && isSameDay(new Date(c.lastReviewedAt), d));
     const isToday = isSameDay(d, today);
     const isPast = d < today && !isToday;
     return { label, hasActivity, isToday, isPast };
@@ -155,7 +155,7 @@ export default function DashboardPage() {
                 {stats.reviewDoneToday ? (
                   <>
                     <p className="text-2xl font-bold text-green-600">완료 ✓</p>
-                    <p className="text-sm text-muted-foreground">오늘 복습 완료</p>
+                    <p className="text-sm text-muted-foreground">오늘 {stats.reviewedToday}개 복습 완료</p>
                   </>
                 ) : (
                   <>
@@ -177,22 +177,23 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between gap-2">
               {weekActivity.map(({ label, hasActivity, isToday, isPast }) => (
                 <div key={label} className="flex flex-col items-center gap-2">
-                  <span className={`text-xs ${isToday ? "font-semibold text-primary" : "text-muted-foreground"}`}>
+                  <span className={`text-xs ${isToday ? "font-bold text-primary" : "text-muted-foreground"}`}>
                     {label}
                   </span>
-                  {hasActivity ? (
-                    <CheckCircle2 className={`h-7 w-7 ${isToday ? "text-primary" : "text-primary/60"}`} />
-                  ) : (
-                    <Circle
-                      className={`h-7 w-7 ${
-                        isToday
-                          ? "text-primary/30"
-                          : isPast
-                            ? "text-destructive/30"
-                            : "text-muted-foreground/20"
-                      }`}
-                    />
-                  )}
+                  <div className={`flex h-9 w-9 items-center justify-center rounded-full ${
+                    isToday && hasActivity
+                      ? "bg-primary text-primary-foreground shadow-md"
+                      : isToday && !hasActivity
+                        ? "border-2 border-primary/40 text-primary/40"
+                        : hasActivity
+                          ? "bg-primary/15 text-primary"
+                          : "bg-muted/40 text-muted-foreground/30"
+                  }`}>
+                    {hasActivity
+                      ? <CheckCircle2 className={`h-5 w-5 ${isToday ? "text-primary-foreground" : ""}`} />
+                      : <Circle className="h-5 w-5" />
+                    }
+                  </div>
                 </div>
               ))}
             </div>

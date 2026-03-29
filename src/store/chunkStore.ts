@@ -17,6 +17,7 @@ interface ChunkStore {
   sourceText: string;
   sourceName: string;
   isLoadingSaved: boolean;
+  miniSessionCards: Chunk[];
   setSourceText: (text: string) => void;
   setSourceName: (name: string) => void;
   setChunks: (chunks: Chunk[]) => void;
@@ -32,6 +33,9 @@ interface ChunkStore {
   excludeChunk: (id: string) => Promise<void>;
   restoreChunk: (id: string) => Promise<void>;
   loadSavedChunks: () => Promise<void>;
+  setMiniSessionCards: (cards: Chunk[]) => void;
+  clearMiniSession: () => void;
+  scheduleTomorrow: (ids: string[]) => Promise<void>;
 }
 
 export const useChunkStore = create<ChunkStore>((set, get) => ({
@@ -40,6 +44,7 @@ export const useChunkStore = create<ChunkStore>((set, get) => ({
   sourceText: "",
   sourceName: "",
   isLoadingSaved: false,
+  miniSessionCards: [],
 
   setSourceText: (text) => set({ sourceText: text }),
   setSourceName: (name) => set({ sourceName: name }),
@@ -219,6 +224,26 @@ export const useChunkStore = create<ChunkStore>((set, get) => ({
     set((s) => ({
       savedChunks: s.savedChunks.map((c) =>
         c.id === id ? { ...c, status: "active" as const, reviewStage: 0, nextReviewAt: undefined } : c
+      ),
+    }));
+  },
+
+  setMiniSessionCards: (cards) => set({ miniSessionCards: cards }),
+  clearMiniSession: () => set({ miniSessionCards: [] }),
+
+  scheduleTomorrow: async (ids) => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+    const nextReviewAt = tomorrow.toISOString();
+    const { error } = await supabase
+      .from("vocabulary")
+      .update({ next_review_at: nextReviewAt })
+      .in("id", ids);
+    if (error) throw error;
+    set((s) => ({
+      savedChunks: s.savedChunks.map((c) =>
+        ids.includes(c.id) ? { ...c, nextReviewAt } : c
       ),
     }));
   },
